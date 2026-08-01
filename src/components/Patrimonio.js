@@ -33,8 +33,18 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
       <h2 className="section-title">Patrimonio</h2>
       {last && (
         <div className="metric-grid" style={{ marginBottom: 20 }}>
-          <div className="metric-card"><div className="metric-label">Último patrimonio conjunto</div><div className="metric-value accent">{parseFloat(last.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</div></div>
-          <div className="metric-card"><div className="metric-label">Último ahorro individual</div><div className="metric-value positive">{parseFloat(last.ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</div></div>
+          <div className="metric-card">
+            <div className="metric-label">Último patrimonio conjunto</div>
+            <div className="metric-value accent">
+              {parseFloat(last.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+            </div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Último ahorro individual</div>
+            <div className={`metric-value ${parseFloat(last.ahorro) < 0 ? 'negative' : 'positive'}`}>
+              {parseFloat(last.ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+            </div>
+          </div>
         </div>
       )}
 
@@ -47,11 +57,11 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           </div>
           <div className="form-group">
             <label className="form-label">Patrimonio conjunto (€)</label>
-            <input type="number" step="0.01" min="0" className="form-input" placeholder="0.00" value={patrimonio} onChange={e => setPatrimonio(e.target.value)} />
+            <input type="number" step="0.01" className="form-input" placeholder="0.00" value={patrimonio} onChange={e => setPatrimonio(e.target.value)} />
           </div>
           <div className="form-group">
             <label className="form-label">Mi ahorro individual (€)</label>
-            <input type="number" step="0.01" min="0" className="form-input" placeholder="0.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
+            <input type="number" step="0.01" className="form-input" placeholder="0.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
           </div>
         </div>
         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar registro'}</button>
@@ -74,7 +84,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                 <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500 }}>{item.mes}</td>
                   <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--accent2)' }}>{parseFloat(item.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--green)' }}>{parseFloat(item.ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</td>
+                  <td style={{ padding: '12px 16px', fontSize: 14, color: parseFloat(item.ahorro) < 0 ? 'var(--red)' : 'var(--green)' }}>{parseFloat(item.ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}><button className="delete-btn" onClick={() => deleteRegistro(item.id)}>✕</button></td>
                 </tr>
               ))}
