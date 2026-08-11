@@ -10,12 +10,36 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const [editingNota, setEditingNota] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Función ultra-segura para extraer el ahorro y la nota sin perder los datos antiguos
+  const parseDescription = (item) => {
+    // Si viene la propiedad directa o la description
+    const rawDesc = item.description || item.ahorro || '0'
+    
+    // Intentamos ver si es JSON con nota
+    if (typeof rawDesc === 'string' && rawDesc.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawDesc)
+        return {
+          ahorro: parsed.ahorro !== undefined ? parsed.ahorro : '0',
+          nota: parsed.nota || ''
+        }
+      } catch (e) {
+        // Si falla el parseo, devolvemos el texto como ahorro
+      }
+    }
+    
+    // Si no es JSON, la description o el ahorro es directamente el valor numérico
+    return {
+      ahorro: String(rawDesc),
+      nota: ''
+    }
+  }
+
   const addRegistro = async (e) => {
     e.preventDefault()
     if (!mes.trim()) return
     setSaving(true)
     
-    // Convertimos coma a punto por si se introduce desde teclado móvil en español
     const ahorroLimpio = ahorro.replace(',', '.')
     const patrimonioLimpio = patrimonio.replace(',', '.')
 
@@ -36,16 +60,16 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     setSaving(false)
   }
 
-  const saveNotaExistente = async (id, rawDescription) => {
+  const saveNotaExistente = async (item) => {
     setSaving(true)
-    const { ahorro: ahorroOriginal } = parseDescription(rawDescription)
+    const { ahorro: ahorroExistente } = parseDescription(item)
 
     await supabase.from('budget_entries').update({
       description: JSON.stringify({
-        ahorro: String(ahorroOriginal),
+        ahorro: String(ahorroExistente),
         nota: editingNota.trim()
       })
-    }).eq('id', id)
+    }).eq('id', item.id)
     
     setEditingId(null)
     setEditingNota('')
@@ -56,20 +80,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const deleteRegistro = async (id) => {
     await supabase.from('budget_entries').delete().eq('id', id)
     onRefresh()
-  }
-
-  const parseDescription = (desc) => {
-    if (!desc) return { ahorro: '0', nota: '' }
-    try {
-      const parsed = JSON.parse(desc)
-      return {
-        ahorro: parsed.ahorro !== undefined ? parsed.ahorro : '0',
-        nota: parsed.nota || ''
-      }
-    } catch (e) {
-      // Compatibilidad con registros antiguos
-      return { ahorro: String(desc), nota: '' }
-    }
   }
 
   const last = historico[historico.length - 1]
@@ -87,8 +97,8 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           </div>
           <div className="metric-card">
             <div className="metric-label">Último ahorro individual</div>
-            <div className={`metric-value ${parseFloat(last.ahorro) < 0 ? 'negative' : 'positive'}`}>
-              {parseFloat(last.ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+            <div className={`metric-value ${parseFloat(parseDescription(last).ahorro) < 0 ? 'negative' : 'positive'}`}>
+              {parseFloat(parseDescription(last).ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
             </div>
           </div>
         </div>
@@ -137,7 +147,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
             </thead>
             <tbody>
               {historico.map(item => {
-                const { ahorro: ahorroValor, nota: notaGuardada } = parseDescription(item.description || item.ahorro)
+                const { ahorro: ahorroValor, nota: notaGuardada } = parseDescription(item)
                 const numAhorro = parseFloat(ahorroValor) || 0
                 const isEditing = editingId === item.id
 
@@ -165,7 +175,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                           <button 
                             className="btn btn-primary" 
                             style={{ padding: '6px 10px', fontSize: 12, shrink: 0 }}
-                            onClick={() => saveNotaExistente(item.id, item.description || item.ahorro)}
+                            onClick={() => saveNotaExistente(item)}
                           >
                             ✓
                           </button>
