@@ -6,29 +6,25 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const [patrimonio, setPatrimonio] = useState('')
   const [ahorro, setAhorro] = useState('')
   const [nota, setNota] = useState('')
+  
+  // Estados para edicion en tabla
   const [editingId, setEditingId] = useState(null)
   const [editingNota, setEditingNota] = useState('')
+  const [editingAhorro, setEditingAhorro] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Función ultra-segura para extraer el ahorro y la nota sin perder los datos antiguos
+  // Extraer ahorro y nota con total compatibilidad
   const parseDescription = (item) => {
-    // Si viene la propiedad directa o la description
     const rawDesc = item.description || item.ahorro || '0'
-    
-    // Intentamos ver si es JSON con nota
     if (typeof rawDesc === 'string' && rawDesc.trim().startsWith('{')) {
       try {
         const parsed = JSON.parse(rawDesc)
         return {
-          ahorro: parsed.ahorro !== undefined ? parsed.ahorro : '0',
+          ahorro: parsed.ahorro !== undefined ? String(parsed.ahorro) : '0',
           nota: parsed.nota || ''
         }
-      } catch (e) {
-        // Si falla el parseo, devolvemos el texto como ahorro
-      }
+      } catch (e) {}
     }
-    
-    // Si no es JSON, la description o el ahorro es directamente el valor numérico
     return {
       ahorro: String(rawDesc),
       nota: ''
@@ -40,16 +36,17 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     if (!mes.trim()) return
     setSaving(true)
     
-    const ahorroLimpio = ahorro.replace(',', '.')
-    const patrimonioLimpio = patrimonio.replace(',', '.')
+    // Limpiamos comas y convertimos a número flotante real
+    const ahorroNum = parseFloat(String(ahorro).replace(',', '.')) || 0
+    const patrimonioNum = parseFloat(String(patrimonio).replace(',', '.')) || 0
 
     await supabase.from('budget_entries').insert({
       user_name: user, 
       type: 'historico',
       category: mes.trim(), 
-      amount: parseFloat(patrimonioLimpio) || 0,
+      amount: patrimonioNum,
       description: JSON.stringify({
-        ahorro: String(parseFloat(ahorroLimpio) || 0),
+        ahorro: String(ahorroNum),
         nota: nota.trim()
       }), 
       month: 'historico'
@@ -60,19 +57,18 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     setSaving(false)
   }
 
-  const saveNotaExistente = async (item) => {
+  const saveEdicion = async (item) => {
     setSaving(true)
-    const { ahorro: ahorroExistente } = parseDescription(item)
+    const ahorroNum = parseFloat(String(editingAhorro).replace(',', '.')) || 0
 
     await supabase.from('budget_entries').update({
       description: JSON.stringify({
-        ahorro: String(ahorroExistente),
+        ahorro: String(ahorroNum),
         nota: editingNota.trim()
       })
     }).eq('id', item.id)
     
     setEditingId(null)
-    setEditingNota('')
     await onRefresh()
     setSaving(false)
   }
@@ -114,11 +110,11 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           </div>
           <div className="form-group">
             <label className="form-label">Patrimonio conjunto (€)</label>
-            <input type="number" step="0.01" className="form-input" placeholder="0.00" value={patrimonio} onChange={e => setPatrimonio(e.target.value)} />
+            <input type="text" inputMode="decimal" className="form-input" placeholder="0.00" value={patrimonio} onChange={e => setPatrimonio(e.target.value)} />
           </div>
           <div className="form-group">
             <label className="form-label">Mi ahorro individual (€)</label>
-            <input type="number" step="0.01" className="form-input" placeholder="0.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
+            <input type="text" inputMode="decimal" className="form-input" placeholder="-100.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
           </div>
         </div>
         
@@ -154,45 +150,64 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                 return (
                   <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '12px 12px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{item.mes}</td>
+                    
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--accent2)', whiteSpace: 'nowrap' }}>
                       {parseFloat(item.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
+
+                    {/* COLUMNA AHORRO EDITABLE */}
                     <td style={{ padding: '12px 12px', fontSize: 13, color: numAhorro < 0 ? 'var(--red)' : 'var(--green)', whiteSpace: 'nowrap' }}>
-                      {numAhorro.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                      {isEditing ? (
+                        <input 
+                          type="text"
+                          inputMode="decimal"
+                          className="form-input" 
+                          style={{ padding: '4px 6px', fontSize: 12, width: '80px' }} 
+                          value={editingAhorro} 
+                          onChange={e => setEditingAhorro(e.target.value)} 
+                        />
+                      ) : (
+                        <span>{numAhorro.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
+                      )}
                     </td>
                     
-                    {/* EDICIÓN DE NOTA */}
+                    {/* COLUMNA NOTA EDITABLE */}
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--text2)', minWidth: '160px' }}>
                       {isEditing ? (
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <input 
-                            className="form-input" 
-                            style={{ padding: '6px 8px', fontSize: 12, minWidth: '100px' }} 
-                            value={editingNota} 
-                            onChange={e => setEditingNota(e.target.value)} 
-                            placeholder="Nota..."
-                          />
-                          <button 
-                            className="btn btn-primary" 
-                            style={{ padding: '6px 10px', fontSize: 12, shrink: 0 }}
-                            onClick={() => saveNotaExistente(item)}
-                          >
-                            ✓
-                          </button>
-                        </div>
+                        <input 
+                          className="form-input" 
+                          style={{ padding: '4px 6px', fontSize: 12, minWidth: '100px' }} 
+                          value={editingNota} 
+                          onChange={e => setEditingNota(e.target.value)} 
+                          placeholder="Nota..."
+                        />
                       ) : (
                         <div 
                           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }} 
-                          onClick={() => { setEditingId(item.id); setEditingNota(notaGuardada); }}
+                          onClick={() => { 
+                            setEditingId(item.id); 
+                            setEditingNota(notaGuardada); 
+                            setEditingAhorro(ahorroValor);
+                          }}
                         >
-                          <span style={{ fontSize: 12 }}>{notaGuardada || <i style={{ color: 'var(--text3)' }}>+ Nota</i>}</span>
+                          <span style={{ fontSize: 12 }}>{notaGuardada || <i style={{ color: 'var(--text3)' }}>+ Editar</i>}</span>
                           <span style={{ fontSize: 10, opacity: 0.5 }}>✏️</span>
                         </div>
                       )}
                     </td>
 
                     <td style={{ padding: '12px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button className="delete-btn" style={{ padding: '6px 10px' }} onClick={() => deleteRegistro(item.id)}>✕</button>
+                      {isEditing ? (
+                        <button 
+                          className="btn btn-primary" 
+                          style={{ padding: '4px 8px', fontSize: 12 }}
+                          onClick={() => saveEdicion(item)}
+                        >
+                          ✓ Guardar
+                        </button>
+                      ) : (
+                        <button className="delete-btn" style={{ padding: '6px 10px' }} onClick={() => deleteRegistro(item.id)}>✕</button>
+                      )}
                     </td>
                   </tr>
                 )
