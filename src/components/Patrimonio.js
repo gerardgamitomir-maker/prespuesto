@@ -5,30 +5,27 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const [mes, setMes] = useState('')
   const [patrimonio, setPatrimonio] = useState('')
   const [ahorro, setAhorro] = useState('')
-  const [nota, setNota] = useState('')
   
   // Estados para edición en tabla
   const [editingId, setEditingId] = useState(null)
-  const [editingNota, setEditingNota] = useState('')
   const [editingAhorro, setEditingAhorro] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Extraer ahorro y nota con total compatibilidad
-  const parseDescription = (item) => {
-    const rawDesc = item.description || item.ahorro || '0'
-    if (typeof rawDesc === 'string' && rawDesc.trim().startsWith('{')) {
+  // Extraer el valor del ahorro de forma robusta
+  const getAhorroValue = (item) => {
+    let raw = item.ahorro !== undefined ? item.ahorro : item.description
+    if (raw === null || raw === undefined) return 0
+
+    // Si viene dentro de un JSON guardado previamente, lo extraemos
+    if (typeof raw === 'string' && raw.trim().startsWith('{')) {
       try {
-        const parsed = JSON.parse(rawDesc)
-        return {
-          ahorro: parsed.ahorro !== undefined ? String(parsed.ahorro) : '0',
-          nota: parsed.nota || ''
-        }
+        const parsed = JSON.parse(raw)
+        if (parsed.ahorro !== undefined) raw = parsed.ahorro
       } catch (e) {}
     }
-    return {
-      ahorro: String(rawDesc),
-      nota: ''
-    }
+
+    const num = parseFloat(String(raw).replace(',', '.'))
+    return isNaN(num) ? 0 : num
   }
 
   const addRegistro = async (e) => {
@@ -36,36 +33,39 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     if (!mes.trim()) return
     setSaving(true)
     
-    // Limpiamos comas y convertimos a número flotante real
-    const ahorroNum = parseFloat(String(ahorro).replace(',', '.')) || 0
-    const patrimonioNum = parseFloat(String(patrimonio).replace(',', '.')) || 0
+    // Convertimos de texto a número con punto decimal
+    const ahorroLimpio = String(ahorro).replace(',', '.')
+    const ahorroNum = parseFloat(ahorroLimpio)
+    const finalAhorro = isNaN(ahorroNum) ? 0 : ahorroNum
+
+    const patrimonioLimpio = String(patrimonio).replace(',', '.')
+    const patrimonioNum = parseFloat(patrimonioLimpio)
+    const finalPatrimonio = isNaN(patrimonioNum) ? 0 : patrimonioNum
 
     await supabase.from('budget_entries').insert({
       user_name: user, 
       type: 'historico',
       category: mes.trim(), 
-      amount: patrimonioNum,
-      description: JSON.stringify({
-        ahorro: String(ahorroNum),
-        nota: nota.trim()
-      }), 
+      amount: finalPatrimonio,
+      // Guardamos directamente el string del número para no romper la lectura global
+      description: String(finalAhorro), 
       month: 'historico'
     })
     
-    setMes(''); setPatrimonio(''); setAhorro(''); setNota('')
+    setMes(''); setPatrimonio(''); setAhorro('')
     await onRefresh()
     setSaving(false)
   }
 
   const saveEdicion = async (item) => {
     setSaving(true)
-    const ahorroNum = parseFloat(String(editingAhorro).replace(',', '.')) || 0
+    
+    const ahorroLimpio = String(editingAhorro).replace(',', '.')
+    const ahorroNum = parseFloat(ahorroLimpio)
+    const finalAhorro = isNaN(ahorroNum) ? 0 : ahorroNum
 
     await supabase.from('budget_entries').update({
-      description: JSON.stringify({
-        ahorro: String(ahorroNum),
-        nota: editingNota.trim()
-      })
+      description: String(finalAhorro)
     }).eq('id', item.id)
     
     setEditingId(null)
@@ -88,13 +88,13 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           <div className="metric-card">
             <div className="metric-label">Último patrimonio conjunto</div>
             <div className="metric-value accent">
-              {parseFloat(last.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+              {parseFloat(last.patrimonio || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
             </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Último ahorro individual</div>
-            <div className={`metric-value ${parseFloat(parseDescription(last).ahorro) < 0 ? 'negative' : 'positive'}`}>
-              {parseFloat(parseDescription(last).ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+            <div className={`metric-value ${getAhorroValue(last) < 0 ? 'negative' : 'positive'}`}>
+              {getAhorroValue(last).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
             </div>
           </div>
         </div>
@@ -117,11 +117,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
             <input type="text" className="form-input" placeholder="-100.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
           </div>
         </div>
-        
-        <div className="form-group" style={{ marginTop: 10 }}>
-          <label className="form-label">Nota / Observaciones (Opcional)</label>
-          <input className="form-input" placeholder="Ej: Paga extra, bonus, viaje..." value={nota} onChange={e => setNota(e.target.value)} />
-        </div>
 
         <button type="submit" className="btn btn-primary" style={{ marginTop: 14 }} disabled={saving}>
           {saving ? 'Guardando...' : 'Guardar registro'}
@@ -133,18 +128,17 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
         <div className="empty-state"><div className="empty-state-icon">△</div><p>No hay registros todavía</p></div>
       ) : (
         <div className="card" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', minWidth: '500px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Mes', 'Patrimonio', 'Ahorro', 'Nota', ''].map(h => (
+                {['Mes', 'Patrimonio', 'Ahorro', ''].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text3)', fontWeight: 500 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {historico.map(item => {
-                const { ahorro: ahorroValor, nota: notaGuardada } = parseDescription(item)
-                const numAhorro = parseFloat(ahorroValor) || 0
+                const numAhorro = getAhorroValue(item)
                 const isEditing = editingId === item.id
 
                 return (
@@ -152,44 +146,28 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                     <td style={{ padding: '12px 12px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{item.mes}</td>
                     
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--accent2)', whiteSpace: 'nowrap' }}>
-                      {parseFloat(item.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                      {parseFloat(item.patrimonio || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
 
-                    {/* COLUMNA AHORRO EDITABLE CON TECLADO COMPLETO */}
+                    {/* COLUMNA AHORRO */}
                     <td style={{ padding: '12px 12px', fontSize: 13, color: numAhorro < 0 ? 'var(--red)' : 'var(--green)', whiteSpace: 'nowrap' }}>
                       {isEditing ? (
                         <input 
                           type="text"
                           className="form-input" 
-                          style={{ padding: '4px 6px', fontSize: 12, width: '80px' }} 
+                          style={{ padding: '4px 6px', fontSize: 12, width: '100px' }} 
                           value={editingAhorro} 
                           onChange={e => setEditingAhorro(e.target.value)} 
                         />
                       ) : (
-                        <span>{numAhorro.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
-                      )}
-                    </td>
-                    
-                    {/* COLUMNA NOTA EDITABLE */}
-                    <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--text2)', minWidth: '160px' }}>
-                      {isEditing ? (
-                        <input 
-                          className="form-input" 
-                          style={{ padding: '4px 6px', fontSize: 12, minWidth: '100px' }} 
-                          value={editingNota} 
-                          onChange={e => setEditingNota(e.target.value)} 
-                          placeholder="Nota..."
-                        />
-                      ) : (
                         <div 
-                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }} 
-                          onClick={() => { 
-                            setEditingId(item.id); 
-                            setEditingNota(notaGuardada); 
-                            setEditingAhorro(ahorroValor);
+                          style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          onClick={() => {
+                            setEditingId(item.id)
+                            setEditingAhorro(String(numAhorro))
                           }}
                         >
-                          <span style={{ fontSize: 12 }}>{notaGuardada || <i style={{ color: 'var(--text3)' }}>+ Editar</i>}</span>
+                          <span>{numAhorro.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
                           <span style={{ fontSize: 10, opacity: 0.5 }}>✏️</span>
                         </div>
                       )}
