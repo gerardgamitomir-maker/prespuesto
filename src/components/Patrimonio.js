@@ -13,33 +13,28 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const [editingNota, setEditingNota] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Extraer tanto el importe del ahorro como la nota guardada de forma segura
-  const parseItemData = (item) => {
+  // Extraer el nombre del mes y la nota guardada desde la columna category
+  const parseCategoryAndNota = (categoryStr) => {
+    if (!categoryStr) return { mesNombre: '', notaGuardada: '' }
+    if (categoryStr.includes('|')) {
+      const parts = categoryStr.split('|')
+      return {
+        mesNombre: parts[0].trim(),
+        notaGuardada: parts.slice(1).join('|').trim()
+      }
+    }
+    return { mesNombre: categoryStr, notaGuardada: '' }
+  }
+
+  // Extraer el ahorro de forma segura desde la propiedad
+  const getAhorroValue = (item) => {
     let raw = item.ahorro !== undefined ? item.ahorro : item.description
-    if (raw === null || raw === undefined) return { ahorro: 0, nota: '' }
-
-    let ahorroStr = String(raw)
-    let notaStr = ''
-
-    // Si tiene el separador '|', dividimos ahorro y nota
-    if (ahorroStr.includes('|')) {
-      const parts = ahorroStr.split('|')
-      ahorroStr = parts[0]
-      notaStr = parts.slice(1).join('|')
-    } else if (ahorroStr.trim().startsWith('{')) {
-      // Por compatibilidad si quedó algún JSON antiguo
-      try {
-        const parsed = JSON.parse(ahorroStr)
-        ahorroStr = parsed.ahorro !== undefined ? parsed.ahorro : '0'
-        notaStr = parsed.nota || ''
-      } catch (e) {}
+    if (raw === null || raw === undefined) return 0
+    if (typeof raw === 'string' && raw.includes('|')) {
+      raw = raw.split('|')[0]
     }
-
-    const num = parseFloat(String(ahorroStr).replace(',', '.'))
-    return {
-      ahorro: isNaN(num) ? 0 : num,
-      nota: notaStr
-    }
+    const num = parseFloat(String(raw).replace(',', '.'))
+    return isNaN(num) ? 0 : num
   }
 
   const addRegistro = async (e) => {
@@ -47,7 +42,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     if (!mes.trim()) return
     setSaving(true)
     
-    // Limpieza de formato numérico
     const ahorroLimpio = String(ahorro).replace(',', '.')
     const ahorroNum = parseFloat(ahorroLimpio)
     const finalAhorro = isNaN(ahorroNum) ? 0 : ahorroNum
@@ -56,17 +50,15 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     const patrimonioNum = parseFloat(patrimonioLimpio)
     const finalPatrimonio = isNaN(patrimonioNum) ? 0 : patrimonioNum
 
-    // Si hay nota, la adjuntamos tras la barra vertical '|'
-    const finalDescription = nota.trim() 
-      ? `${finalAhorro}|${nota.trim()}` 
-      : String(finalAhorro)
+    // Guardamos la nota unida al mes en 'category' para evitar que App.js la descarte
+    const finalCategory = nota.trim() ? `${mes.trim()} | ${nota.trim()}` : mes.trim()
 
     await supabase.from('budget_entries').insert({
       user_name: user, 
       type: 'historico',
-      category: mes.trim(), 
+      category: finalCategory, 
       amount: finalPatrimonio,
-      description: finalDescription, 
+      description: String(finalAhorro), 
       month: 'historico'
     })
     
@@ -82,12 +74,12 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     const ahorroNum = parseFloat(ahorroLimpio)
     const finalAhorro = isNaN(ahorroNum) ? 0 : ahorroNum
 
-    const finalDescription = editingNota.trim() 
-      ? `${finalAhorro}|${editingNota.trim()}` 
-      : String(finalAhorro)
+    const { mesNombre } = parseCategoryAndNota(item.category || item.mes)
+    const finalCategory = editingNota.trim() ? `${mesNombre} | ${editingNota.trim()}` : mesNombre
 
     await supabase.from('budget_entries').update({
-      description: finalDescription
+      category: finalCategory,
+      description: String(finalAhorro)
     }).eq('id', item.id)
     
     setEditingId(null)
@@ -115,8 +107,8 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           </div>
           <div className="metric-card">
             <div className="metric-label">Último ahorro individual</div>
-            <div className={`metric-value ${parseItemData(last).ahorro < 0 ? 'negative' : 'positive'}`}>
-              {parseItemData(last).ahorro.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+            <div className={`metric-value ${getAhorroValue(last) < 0 ? 'negative' : 'positive'}`}>
+              {getAhorroValue(last).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
             </div>
           </div>
         </div>
@@ -165,12 +157,13 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
             </thead>
             <tbody>
               {historico.map(item => {
-                const { ahorro: numAhorro, nota: notaGuardada } = parseItemData(item)
+                const { mesNombre, notaGuardada } = parseCategoryAndNota(item.category || item.mes)
+                const numAhorro = getAhorroValue(item)
                 const isEditing = editingId === item.id
 
                 return (
                   <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 12px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{item.mes}</td>
+                    <td style={{ padding: '12px 12px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{mesNombre}</td>
                     
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--accent2)', whiteSpace: 'nowrap' }}>
                       {parseFloat(item.patrimonio || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
