@@ -15,13 +15,17 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     if (!mes.trim()) return
     setSaving(true)
     
+    // Convertimos coma a punto por si se introduce desde teclado móvil en español
+    const ahorroLimpio = ahorro.replace(',', '.')
+    const patrimonioLimpio = patrimonio.replace(',', '.')
+
     await supabase.from('budget_entries').insert({
       user_name: user, 
       type: 'historico',
       category: mes.trim(), 
-      amount: parseFloat(patrimonio) || 0,
+      amount: parseFloat(patrimonioLimpio) || 0,
       description: JSON.stringify({
-        ahorro: String(parseFloat(ahorro) || 0),
+        ahorro: String(parseFloat(ahorroLimpio) || 0),
         nota: nota.trim()
       }), 
       month: 'historico'
@@ -32,11 +36,13 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     setSaving(false)
   }
 
-  const saveNotaExistente = async (id, ahorroActual) => {
+  const saveNotaExistente = async (id, rawDescription) => {
     setSaving(true)
+    const { ahorro: ahorroOriginal } = parseDescription(rawDescription)
+
     await supabase.from('budget_entries').update({
       description: JSON.stringify({
-        ahorro: String(ahorroActual || 0),
+        ahorro: String(ahorroOriginal),
         nota: editingNota.trim()
       })
     }).eq('id', id)
@@ -53,14 +59,16 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   }
 
   const parseDescription = (desc) => {
+    if (!desc) return { ahorro: '0', nota: '' }
     try {
       const parsed = JSON.parse(desc)
       return {
-        ahorro: parsed.ahorro || desc,
+        ahorro: parsed.ahorro !== undefined ? parsed.ahorro : '0',
         nota: parsed.nota || ''
       }
     } catch (e) {
-      return { ahorro: desc, nota: '' }
+      // Compatibilidad con registros antiguos
+      return { ahorro: String(desc), nota: '' }
     }
   }
 
@@ -114,7 +122,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
         </button>
       </form>
 
-      {/* TABLA DE REGISTROS CON SCROLL HORIZONTAL PARA MÓVIL */}
+      {/* TABLA DE REGISTROS */}
       {historico.length === 0 ? (
         <div className="empty-state"><div className="empty-state-icon">△</div><p>No hay registros todavía</p></div>
       ) : (
@@ -129,7 +137,8 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
             </thead>
             <tbody>
               {historico.map(item => {
-                const { ahorro, nota: notaGuardada } = parseDescription(item.description || item.ahorro)
+                const { ahorro: ahorroValor, nota: notaGuardada } = parseDescription(item.description || item.ahorro)
+                const numAhorro = parseFloat(ahorroValor) || 0
                 const isEditing = editingId === item.id
 
                 return (
@@ -138,11 +147,11 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--accent2)', whiteSpace: 'nowrap' }}>
                       {parseFloat(item.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: 13, color: parseFloat(ahorro) < 0 ? 'var(--red)' : 'var(--green)', whiteSpace: 'nowrap' }}>
-                      {parseFloat(ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                    <td style={{ padding: '12px 12px', fontSize: 13, color: numAhorro < 0 ? 'var(--red)' : 'var(--green)', whiteSpace: 'nowrap' }}>
+                      {numAhorro.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
                     
-                    {/* EDICIÓN DE NOTA OPTIMIZADA PARA MÓVIL */}
+                    {/* EDICIÓN DE NOTA */}
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--text2)', minWidth: '160px' }}>
                       {isEditing ? (
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -156,7 +165,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                           <button 
                             className="btn btn-primary" 
                             style={{ padding: '6px 10px', fontSize: 12, shrink: 0 }}
-                            onClick={() => saveNotaExistente(item.id, ahorro)}
+                            onClick={() => saveNotaExistente(item.id, item.description || item.ahorro)}
                           >
                             ✓
                           </button>
