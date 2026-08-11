@@ -15,8 +15,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     if (!mes.trim()) return
     setSaving(true)
     
-    // Guardamos la nota dentro del campo description del registro
-    // o como parte del objeto
     await supabase.from('budget_entries').insert({
       user_name: user, 
       type: 'historico',
@@ -54,7 +52,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     onRefresh()
   }
 
-  // Utilidad para extraer la nota guardada de forma segura
   const parseDescription = (desc) => {
     try {
       const parsed = JSON.parse(desc)
@@ -63,7 +60,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
         nota: parsed.nota || ''
       }
     } catch (e) {
-      // Compatibilidad con registros antiguos donde description solo tenía el número de ahorro
       return { ahorro: desc, nota: '' }
     }
   }
@@ -118,16 +114,16 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
         </button>
       </form>
 
-      {/* TABLA DE REGISTROS */}
+      {/* TABLA DE REGISTROS CON SCROLL HORIZONTAL PARA MÓVIL */}
       {historico.length === 0 ? (
         <div className="empty-state"><div className="empty-state-icon">△</div><p>No hay registros todavía</p></div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="card" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Mes', 'Patrimonio conjunto', 'Ahorro individual', 'Nota', ''].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text3)', fontWeight: 500 }}>{h}</th>
+                {['Mes', 'Patrimonio', 'Ahorro', 'Nota', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text3)', fontWeight: 500 }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -138,28 +134,28 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
 
                 return (
                   <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500 }}>{item.mes}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 14, color: 'var(--accent2)' }}>
+                    <td style={{ padding: '12px 12px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{item.mes}</td>
+                    <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--accent2)', whiteSpace: 'nowrap' }}>
                       {parseFloat(item.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
-                    <td style={{ padding: '12px 16px', fontSize: 14, color: parseFloat(ahorro) < 0 ? 'var(--red)' : 'var(--green)' }}>
+                    <td style={{ padding: '12px 12px', fontSize: 13, color: parseFloat(ahorro) < 0 ? 'var(--red)' : 'var(--green)', whiteSpace: 'nowrap' }}>
                       {parseFloat(ahorro).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
                     
-                    {/* COLUMNA DE NOTA EDITABLE */}
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text2)' }}>
+                    {/* EDICIÓN DE NOTA OPTIMIZADA PARA MÓVIL */}
+                    <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--text2)', minWidth: '160px' }}>
                       {isEditing ? (
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input 
                             className="form-input" 
-                            style={{ padding: '4px 8px', fontSize: 12 }} 
+                            style={{ padding: '6px 8px', fontSize: 12, minWidth: '100px' }} 
                             value={editingNota} 
                             onChange={e => setEditingNota(e.target.value)} 
-                            placeholder="Escribe una nota..."
+                            placeholder="Nota..."
                           />
                           <button 
                             className="btn btn-primary" 
-                            style={{ padding: '4px 8px', fontSize: 11 }}
+                            style={{ padding: '6px 10px', fontSize: 12, shrink: 0 }}
                             onClick={() => saveNotaExistente(item.id, ahorro)}
                           >
                             ✓
@@ -169,16 +165,15 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                         <div 
                           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }} 
                           onClick={() => { setEditingId(item.id); setEditingNota(notaGuardada); }}
-                          title="Haz clic para editar la nota"
                         >
-                          <span>{notaGuardada || <i style={{ color: 'var(--text3)' }}>+ Añadir nota</i>}</span>
+                          <span style={{ fontSize: 12 }}>{notaGuardada || <i style={{ color: 'var(--text3)' }}>+ Nota</i>}</span>
                           <span style={{ fontSize: 10, opacity: 0.5 }}>✏️</span>
                         </div>
                       )}
                     </td>
 
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <button className="delete-btn" onClick={() => deleteRegistro(item.id)}>✕</button>
+                    <td style={{ padding: '12px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button className="delete-btn" style={{ padding: '6px 10px' }} onClick={() => deleteRegistro(item.id)}>✕</button>
                     </td>
                   </tr>
                 )
