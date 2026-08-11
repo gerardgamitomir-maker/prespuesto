@@ -7,7 +7,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const [ahorro, setAhorro] = useState('')
   const [nota, setNota] = useState('')
   
-  // Estados para edicion en tabla
+  // Estados para edición en tabla
   const [editingId, setEditingId] = useState(null)
   const [editingNota, setEditingNota] = useState('')
   const [editingAhorro, setEditingAhorro] = useState('')
@@ -110,11 +110,11 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           </div>
           <div className="form-group">
             <label className="form-label">Patrimonio conjunto (€)</label>
-            <input type="text" inputMode="decimal" className="form-input" placeholder="0.00" value={patrimonio} onChange={e => setPatrimonio(e.target.value)} />
+            <input type="text" className="form-input" placeholder="0.00" value={patrimonio} onChange={e => setPatrimonio(e.target.value)} />
           </div>
           <div className="form-group">
             <label className="form-label">Mi ahorro individual (€)</label>
-            <input type="text" inputMode="decimal" className="form-input" placeholder="-100.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
+            <input type="text" className="form-input" placeholder="-100.00" value={ahorro} onChange={e => setAhorro(e.target.value)} />
           </div>
         </div>
         
@@ -155,12 +155,11 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                       {parseFloat(item.patrimonio).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
                     </td>
 
-                    {/* COLUMNA AHORRO EDITABLE */}
+                    {/* COLUMNA AHORRO EDITABLE CON TECLADO COMPLETO */}
                     <td style={{ padding: '12px 12px', fontSize: 13, color: numAhorro < 0 ? 'var(--red)' : 'var(--green)', whiteSpace: 'nowrap' }}>
                       {isEditing ? (
                         <input 
                           type="text"
-                          inputMode="decimal"
                           className="form-input" 
                           style={{ padding: '4px 6px', fontSize: 12, width: '80px' }} 
                           value={editingAhorro} 
