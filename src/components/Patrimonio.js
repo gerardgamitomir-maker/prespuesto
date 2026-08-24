@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 
 export default function Patrimonio({ data, user, onRefresh, supabase }) {
-  const { historico } = data
+  const historico = data?.historico || []
   const [mes, setMes] = useState('')
   const [patrimonio, setPatrimonio] = useState('')
   const [patrimonioInd, setPatrimonioInd] = useState('')
@@ -16,17 +16,35 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
   const [editingPatrimonioInd, setEditingPatrimonioInd] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Extraer el nombre del mes y la nota guardada desde la columna category
-  const parseCategoryAndNota = (categoryStr) => {
-    if (!categoryStr) return { mesNombre: '', notaGuardada: '' }
+  // Extraer el nombre del mes, patrimonio individual y la nota guardada desde la columna category
+  const parseCategoryData = (categoryStr) => {
+    if (!categoryStr) return { mesNombre: '', patrimonioInd: 0, notaGuardada: '' }
+    
+    let mesNombre = categoryStr
+    let patInd = 0
+    let notaG = ''
+
     if (categoryStr.includes('|')) {
       const parts = categoryStr.split('|')
-      return {
-        mesNombre: parts[0].trim(),
-        notaGuardada: parts.slice(1).join('|').trim()
+      mesNombre = parts[0].trim()
+      
+      const rest = parts.slice(1).join('|').trim()
+      if (rest.includes('[IND:')) {
+        const indMatch = rest.match(/\[IND:(.*?)\]/)
+        if (indMatch) {
+          patInd = parseFloat(indMatch[1]) || 0
+        }
+        notaG = rest.replace(/\[IND:.*?\]/, '').trim()
+      } else {
+        notaG = rest
       }
     }
-    return { mesNombre: categoryStr, notaGuardada: '' }
+
+    return {
+      mesNombre,
+      patrimonioInd: patInd,
+      notaGuardada: notaG
+    }
   }
 
   // Extraer el ahorro de forma segura
@@ -38,24 +56,6 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     }
     const num = parseFloat(String(raw).replace(',', '.'))
     return isNaN(num) ? 0 : num
-  }
-
-  // Extraer patrimonio conjunto e individual de forma compatible
-  const parsePatrimonioValues = (item) => {
-    // Si viene en el objeto directamente o en amount
-    let rawAmount = item.patrimonio !== undefined ? item.patrimonio : item.amount
-    
-    if (typeof rawAmount === 'string' && rawAmount.includes(':')) {
-      const parts = rawAmount.split(':')
-      const conj = parseFloat(parts[0].replace(',', '.')) || 0
-      const ind = parseFloat(parts[1].replace(',', '.')) || 0
-      return { patrimonioConjunto: conj, patrimonioIndividual: ind }
-    }
-    
-    const conj = parseFloat(String(rawAmount || 0).replace(',', '.')) || 0
-    // Si no existía previamente patrimonio individual, podemos tomar el atributo o dejar 0
-    const ind = parseFloat(String(item.patrimonio_individual || 0).replace(',', '.')) || 0
-    return { patrimonioConjunto: conj, patrimonioIndividual: ind }
   }
 
   const addRegistro = async (e) => {
@@ -75,23 +75,31 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     const patrimonioIndNum = parseFloat(patrimonioIndLimpio)
     const finalPatrimonioInd = isNaN(patrimonioIndNum) ? 0 : patrimonioIndNum
 
-    // Guardamos la nota unida al mes en 'category'
-    const finalCategory = nota.trim() ? `${mes.trim()} | ${nota.trim()}` : mes.trim()
+    let categoryBuild = mes.trim()
+    if (finalPatrimonioInd !== 0 || nota.trim()) {
+      categoryBuild += ` | [IND:${finalPatrimonioInd}] ${nota.trim()}`
+    }
 
-    // Para no romper la BD, guardamos ambos patrimonios en amount mediante formato 'conjunto:individual'
-    const amountVal = `${finalPatrimonioConj}:${finalPatrimonioInd}`
+    // Aseguramos que user_name no vaya vacío o undefined
+    const activeUser = user || 'default'
 
-    await supabase.from('budget_entries').insert({
-      user_name: user, 
+    const { error } = await supabase.from('budget_entries').insert({
+      user_name: activeUser, 
       type: 'historico',
-      category: finalCategory, 
-      amount: amountVal,
+      category: categoryBuild, 
+      amount: finalPatrimonioConj,
       description: String(finalAhorro), 
       month: 'historico'
     })
-    
-    setMes(''); setPatrimonio(''); setPatrimonioInd(''); setAhorro(''); setNota('')
-    await onRefresh()
+
+    if (error) {
+      console.error('Error insertando en Supabase:', error)
+      alert('Hubo un error al guardar en la base de datos: ' + error.message)
+    } else {
+      setMes(''); setPatrimonio(''); setPatrimonioInd(''); setAhorro(''); setNota('')
+      if (onRefresh) await onRefresh()
+    }
+
     setSaving(false)
   }
 
@@ -110,28 +118,32 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
     const patIndNum = parseFloat(patIndLimpio)
     const finalPatInd = isNaN(patIndNum) ? 0 : patIndNum
 
-    const { mesNombre } = parseCategoryAndNota(item.category || item.mes)
-    const finalCategory = editingNota.trim() ? `${mesNombre} | ${editingNota.trim()}` : mesNombre
-    const amountVal = `${finalPatConj}:${finalPatInd}`
+    const { mesNombre } = parseCategoryData(item.category || item.mes)
+    
+    let categoryBuild = mesNombre
+    if (finalPatInd !== 0 || editingNota.trim()) {
+      categoryBuild += ` | [IND:${finalPatInd}] ${editingNota.trim()}`
+    }
 
     await supabase.from('budget_entries').update({
-      category: finalCategory,
-      amount: amountVal,
+      category: categoryBuild,
+      amount: finalPatConj,
       description: String(finalAhorro)
     }).eq('id', item.id)
     
     setEditingId(null)
-    await onRefresh()
+    if (onRefresh) await onRefresh()
     setSaving(false)
   }
 
   const deleteRegistro = async (id) => {
     await supabase.from('budget_entries').delete().eq('id', id)
-    onRefresh()
+    if (onRefresh) await onRefresh()
   }
 
-  const last = historico[historico.length - 1]
-  const lastPatrimonio = last ? parsePatrimonioValues(last) : { patrimonioConjunto: 0, patrimonioIndividual: 0 }
+  const last = historico.length > 0 ? historico[historico.length - 1] : null
+  const lastCategoryData = last ? parseCategoryData(last.category || last.mes) : { patrimonioInd: 0 }
+  const lastPatrimonioConj = last ? (parseFloat(last.patrimonio !== undefined ? last.patrimonio : last.amount) || 0) : 0
 
   return (
     <div>
@@ -141,13 +153,13 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
           <div className="metric-card">
             <div className="metric-label">Último patrimonio conjunto</div>
             <div className="metric-value accent">
-              {lastPatrimonio.patrimonioConjunto.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+              {lastPatrimonioConj.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
             </div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Último patrimonio individual</div>
             <div className="metric-value accent">
-              {lastPatrimonio.patrimonioIndividual.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+              {lastCategoryData.patrimonioInd.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
             </div>
           </div>
           <div className="metric-card">
@@ -206,8 +218,8 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
             </thead>
             <tbody>
               {historico.map(item => {
-                const { mesNombre, notaGuardada } = parseCategoryAndNota(item.category || item.mes)
-                const { patrimonioConjunto, patrimonioIndividual } = parsePatrimonioValues(item)
+                const { mesNombre, patrimonioInd: patIndVal, notaGuardada } = parseCategoryData(item.category || item.mes)
+                const patConjVal = parseFloat(item.patrimonio !== undefined ? item.patrimonio : item.amount) || 0
                 const numAhorro = getAhorroValue(item)
                 const isEditing = editingId === item.id
 
@@ -226,7 +238,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                           onChange={e => setEditingPatrimonio(e.target.value)} 
                         />
                       ) : (
-                        <span>{patrimonioConjunto.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
+                        <span>{patConjVal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
                       )}
                     </td>
 
@@ -241,7 +253,7 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                           onChange={e => setEditingPatrimonioInd(e.target.value)} 
                         />
                       ) : (
-                        <span>{patrimonioIndividual.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
+                        <span>{patIndVal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
                       )}
                     </td>
 
@@ -275,8 +287,8 @@ export default function Patrimonio({ data, user, onRefresh, supabase }) {
                           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                           onClick={() => {
                             setEditingId(item.id)
-                            setEditingPatrimonio(String(patrimonioConjunto))
-                            setEditingPatrimonioInd(String(patrimonioIndividual))
+                            setEditingPatrimonio(String(patConjVal))
+                            setEditingPatrimonioInd(String(patIndVal))
                             setEditingAhorro(String(numAhorro))
                             setEditingNota(notaGuardada)
                           }}
