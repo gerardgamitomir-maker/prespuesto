@@ -27,10 +27,14 @@ export default function App() {
     if (!u) return
     setLoading(true)
     try {
-      const { data: rows } = await supabase
+      const { data: rows, error } = await supabase
         .from('budget_entries')
         .select('*')
         .eq('user_name', u)
+
+      if (error) {
+        console.error('Error cargando datos de Supabase:', error)
+      }
 
       const fijos = (rows || [])
         .filter(r => r.type === 'fijo')
@@ -52,9 +56,18 @@ export default function App() {
         .filter(r => r.type === 'variable')
         .map(r => ({ id: r.id, fecha: r.description, concepto: r.category, monto: r.amount }))
 
+      // MAPEO CORREGIDO PARA PATRIMONIO
       const historico = (rows || [])
         .filter(r => r.type === 'historico')
-        .map(r => ({ id: r.id, mes: r.category, patrimonio: r.amount, ahorro: parseFloat(r.description) || 0 }))
+        .map(r => ({ 
+          id: r.id, 
+          category: r.category, // Pasamos el string completo compuesto
+          mes: r.category, 
+          patrimonio: r.amount, 
+          amount: r.amount,
+          ahorro: r.description, // Pasamos la string con el ahorro
+          description: r.description 
+        }))
 
       const ingresos = (rows || [])
         .filter(r => r.type === 'ingreso_extra')
