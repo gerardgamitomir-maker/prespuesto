@@ -27,7 +27,7 @@ export default function App() {
     if (!u) return
     setLoading(true)
     try {
-     const { data: rows, error } = await supabase
+    const { data: rows, error } = await supabase
         .from('budget_entries')
         .select('*')
         .eq('user_name', u)
