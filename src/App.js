@@ -60,6 +60,7 @@ export default function App() {
       // MAPEO CORREGIDO PARA PATRIMONIO
       const historico = (rows || [])
         .filter(r => r.type === 'historico')
+        .sort((a, b) => a.id - b.id)
         .map(r => ({ 
           id: r.id, 
           category: r.category, // Pasamos el string completo compuesto
