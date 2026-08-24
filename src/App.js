@@ -27,10 +27,11 @@ export default function App() {
     if (!u) return
     setLoading(true)
     try {
-      const { data: rows, error } = await supabase
+     const { data: rows, error } = await supabase
         .from('budget_entries')
         .select('*')
         .eq('user_name', u)
+        .order('id', { ascending: true })
 
       if (error) {
         console.error('Error cargando datos de Supabase:', error)
