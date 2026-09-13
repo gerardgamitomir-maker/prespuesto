@@ -79,7 +79,7 @@ export default function App() {
       const nota = notaRow?.description || ''
 
       const configRow = (rows || []).find(r => r.type === 'config')
-      const sueldo = configRow?.amount || 2000
+      const sueldo = configRow?.amount || 2500
       const presupuestoV = parseFloat(configRow?.description) || 250
 
       setData({ fijos, variables, historico, ingresos, nota, sueldo, presupuestoV })
